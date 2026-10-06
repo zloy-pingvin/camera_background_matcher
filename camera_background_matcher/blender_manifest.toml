@@ -1,0 +1,34 @@
+schema_version = "1.0.0"
+
+id = "camera_background_matcher"
+# Keep in sync with bl_info["version"] in __init__.py: Blender 4.2+ shows
+# this one for an extension install, bl_info only for a legacy one
+version = "1.4.1"
+name = "Camera Background Matcher"
+tagline = "Match cameras with backgrounds and manage cameras"
+maintainer = "zloy_pingvin <zloy.tux@gmail.com>"
+type = "add-on"
+
+website = "https://github.com/zloy-pingvin/camera_background_matcher"
+
+tags = ["Camera", "3D View", "Pipeline"]
+
+blender_version_min = "5.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+copyright = [
+  "2026 zloy_pingvin",
+]
+
+# Shown at install time, 64 characters at most. Import from Folder lists
+# the picked folder and loads the images in it
+[permissions]
+files = "Read background images from the folder you pick"
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "/*.zip",
+]
