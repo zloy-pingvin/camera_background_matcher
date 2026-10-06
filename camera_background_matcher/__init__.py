@@ -6,7 +6,7 @@ bl_info = {
     "name": "Camera Background Matcher",
     "author": "zloy_pingvin",
     "version": (1, 4, 1),
-    "blender": (5, 2, 0),
+    "blender": (4, 2, 0),
     "location": "View3D > UI > CamTools",
     "description": "Match cameras with backgrounds and manage cameras",
     "doc_url": "https://github.com/zloy-pingvin/camera_background_matcher",

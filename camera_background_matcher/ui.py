@@ -7,6 +7,7 @@ from . import notes
 from . import paint
 from . import previews
 from .keymaps import get_hotkey_label
+from .properties import displayed
 
 # The CamTools tab is drawn by hand (gpu/blf, see paint.py) instead of with
 # Blender's layout: our own look, preview cards clickable as a whole,
@@ -29,14 +30,18 @@ TAB = "CamTools"
 # Shown at the right end of the title. Read at import time only: on an
 # extension install Blender deletes bl_info once __init__'s body has run
 VERSION = "v" + ".".join(map(str, bl_info["version"]))
+ADDON_NAME = bl_info["name"]
 
 # Geometry in unscaled pixels, × ui_scale at use. Row height, gaps, radii
 # and font sizes are in paint.STYLE.
 MARGIN = 6.0        # region edge → background card
 TAB_GAP = 2.0       # background card → category tabs
-# Blender still paints its own panel outline under the empty panel, a few
-# px wider and ~20 px taller than our content; the card is stretched over it
-COVER_BOTTOM = 24.0
+# Blender 5.0+ still paints its own panel outline under the empty panel, a
+# few px wider and ~20 px taller than our content; the card is stretched
+# over it. 4.2 / 4.5 paint none (measured) — their theme has no
+# panel_outline, and a stretch there is just an empty tail
+COVER_BOTTOM = (24.0 if "panel_outline" in bpy.types.ThemeUserInterface.bl_rna.properties
+                else 0.0)
 PAD = 10.0          # background card edge → widgets
 TITLE_H = 22.0
 SECTION_H = 16.0
@@ -80,16 +85,6 @@ _draw_handle = None
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _displayed(s):
-    """(mc_index, item) pairs as shown: search filter + optional name sort."""
-    search = s.search_filter.lower()
-    items = [(i, it) for i, it in enumerate(s.mc_items)
-             if it.camera and (not search or search in it.camera.name.lower())]
-    if s.sort_by_name:
-        items.sort(key=lambda x: x[1].camera.name)
-    return items
-
-
 def _grid_aspect(images):
     """One aspect for every cell — the first built thumbnail's — so rows
     line up; each photo is cover-fitted into it."""
@@ -121,6 +116,26 @@ def _call(idname, **kw):
         msg = str(exc).strip().splitlines()[-1]
         notes.show(msg.partition(": ")[2] or msg, 'ERROR')
         return {'CANCELLED'}
+
+
+def _open_prefs(context):
+    """Preferences on the Add-ons tab, filtered down to this add-on and
+    expanded, so the hotkey switch is right there."""
+    context.preferences.active_section = 'ADDONS'
+    context.window_manager.addon_search = ADDON_NAME
+    try:
+        # Internal API (what the row's arrow toggles); the filtered list
+        # alone is still one click away if it ever changes. modules()
+        # builds the list first — before the Add-ons tab was ever drawn
+        # there's nothing to expand yet
+        import addon_utils
+        for mod in addon_utils.modules(refresh=False):
+            if mod.__name__ == __package__:
+                addon_utils.module_bl_info(mod)["show_expanded"] = True
+                break
+    except Exception:
+        pass
+    bpy.ops.screen.userpref_show('INVOKE_DEFAULT')
 
 
 def _undo(message):
@@ -241,7 +256,7 @@ def _build(context, region):
            "cam.setup_backgrounds", primary=True)
 
     # --- Cameras
-    items = _displayed(s)
+    items = displayed(s)
     count = (f"{len(items)} / {len(s.mc_items)}" if s.search_filter
              else str(len(s.mc_items)))
     section("CAMERAS", count)
@@ -767,7 +782,7 @@ class CAM_OT_ui_click(bpy.types.Operator):
         elif kind == 'clear_search':
             _call('cam.clear_search')
         elif kind == 'prefs':
-            bpy.ops.screen.userpref_show('INVOKE_DEFAULT')
+            _open_prefs(context)
         _redraw()
         return {'FINISHED'}
 

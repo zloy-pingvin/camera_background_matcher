@@ -4,6 +4,26 @@ import bpy
 # (bind editor) and ui.py (hint text)
 addon_keymaps = []
 
+KEYMAP = '3D View'
+
+
+def user_item(kmi):
+    """(keymap, item) of the user keyconfig's copy of our addon item kmi.
+
+    Blender merges addon items into keyconfigs.user; rebinds made there
+    are what it saves (as diffs) and what's actually active. Editing the
+    addon item itself is never saved, so the bind editor and the hint both
+    work on this copy. item is None until the merge has run."""
+    kc = bpy.context.window_manager.keyconfigs.user
+    km = kc.keymaps.get(KEYMAP) if kc else None
+    if km is None:
+        return None, None
+    for item in km.keymap_items:
+        if (item.idname == kmi.idname
+                and item.properties.direction == kmi.properties.direction):
+            return km, item
+    return km, None
+
 
 def register_keymaps():
     wm = bpy.context.window_manager
@@ -11,7 +31,7 @@ def register_keymaps():
     if not kc:
         return
 
-    km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
+    km = kc.keymaps.new(name=KEYMAP, space_type='VIEW_3D')
 
     kmi_next = km.keymap_items.new(
         "cam.cycle_camera", type='WHEELUPMOUSE', value='PRESS', ctrl=True
@@ -36,7 +56,8 @@ def unregister_keymaps():
 
 
 def get_hotkey_label(addon_module_name):
-    """Return (enabled, label_next, label_prev) from the live kmi's in addon_keymaps."""
+    """Return (enabled, label_next, label_prev) of the live binds — the
+    user keyconfig's copies, so a rebind in Preferences → Keymap shows."""
     prefs = bpy.context.preferences.addons.get(addon_module_name)
     if not prefs or not prefs.preferences.use_hotkey:
         return False, "", ""
@@ -60,7 +81,8 @@ def get_hotkey_label(addon_module_name):
 
     label_next = ""
     label_prev = ""
-    for km, kmi in addon_keymaps:
+    for _, addon_kmi in addon_keymaps:
+        kmi = user_item(addon_kmi)[1] or addon_kmi
         if not kmi.active:
             continue
         if kmi.properties.direction == 1:

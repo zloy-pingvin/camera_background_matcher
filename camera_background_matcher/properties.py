@@ -9,6 +9,18 @@ def update_params(self, context):
             bg.alpha = s.opacity_value
 
 
+def displayed(s):
+    """(mc_index, item) pairs as the tab shows them: search filter, then the
+    optional name sort. Everything acting on "what's on screen" (the grid,
+    remove every other, the cycle hotkey) goes through this."""
+    search = s.search_filter.lower()
+    items = [(i, it) for i, it in enumerate(s.mc_items)
+             if it.camera and (not search or search in it.camera.name.lower())]
+    if s.sort_by_name:
+        items.sort(key=lambda x: x[1].camera.name)
+    return items
+
+
 def update_search(self, context):
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
@@ -75,14 +87,11 @@ class CamToolsSettings(bpy.types.PropertyGroup):
         ),
         default=True,
     )
+    # The original sizes live on the camera data itself while hidden
+    # (operators.SIZE_KEY), not here
     cameras_display_hidden: bpy.props.BoolProperty(
         name="Camera icons hidden",
         default=False,
-        options={'HIDDEN'}
-    )
-    # JSON: {"CameraName": original_display_size, ...}
-    cameras_display_sizes: bpy.props.StringProperty(
-        default="{}",
         options={'HIDDEN'}
     )
     mc_items: bpy.props.CollectionProperty(type=MCItem)

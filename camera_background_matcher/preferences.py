@@ -1,6 +1,6 @@
 import bpy
 
-from .keymaps import addon_keymaps, register_keymaps, unregister_keymaps
+from .keymaps import addon_keymaps, register_keymaps, unregister_keymaps, user_item
 
 # Author links, shown as buttons at the top of the add-on Preferences
 URL_TELEGRAM = "https://t.me/zloytux"
@@ -44,21 +44,18 @@ class CAM_Preferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.label(text="Keys:", icon='KEYINGSET')
 
-        wm = bpy.context.window_manager
-        kc = wm.keyconfigs.addon
+        # The user keyconfig's copies: Blender saves rebinds made on those,
+        # not on the addon items (those come back as Ctrl+Wheel on restart)
+        kc = bpy.context.window_manager.keyconfigs.user
         if not kc:
             box.label(text="Keyconfig unavailable", icon='ERROR')
             return
 
-        try:
-            from rna_keymap_ui import draw_kmi
-        except ImportError:
-            for km, kmi in addon_keymaps:
-                direction = "→ Next" if kmi.properties.direction == 1 else "← Previous"
-                box.label(text=f"{direction}: {kmi.type} (ctrl={kmi.ctrl})")
-            return
-
-        for km, kmi in addon_keymaps:
+        from rna_keymap_ui import draw_kmi
+        for _, addon_kmi in addon_keymaps:
+            km, kmi = user_item(addon_kmi)
+            if kmi is None:
+                continue        # merged into the user keyconfig on next update
             col = box.column()
             col.context_pointer_set("keymap", km)
             draw_kmi([], kc, km, kmi, col, 0)

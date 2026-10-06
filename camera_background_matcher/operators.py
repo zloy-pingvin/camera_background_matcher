@@ -2,12 +2,12 @@ import bpy
 import bmesh
 import math
 import os
-import json
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Vector
 
 from . import notes
 from . import previews
+from .properties import displayed
 
 # ---------------------------------------------------------------------------
 # Background import
@@ -66,15 +66,12 @@ class CAM_OT_setup_backgrounds(bpy.types.Operator):
         updated = 0
         skipped = 0
         failed  = 0
+        done = set()        # camera data already given its background
 
-        for cam_data in bpy.data.cameras:
-            cam_obj = next(
-                (o for o in bpy.data.objects if o.type == 'CAMERA' and o.data == cam_data),
-                None
-            )
-            if not cam_obj:
-                continue
-
+        # This scene's cameras only: the list is per scene, and a card of a
+        # camera from another scene couldn't be made the scene camera
+        for cam_obj in [o for o in context.scene.objects if o.type == 'CAMERA']:
+            cam_data = cam_obj.data
             img_path = file_map.get(cam_obj.name)
             if not img_path and self.ignore_suffix:
                 img_path = file_map.get(cam_obj.name.split('.')[0])
@@ -88,11 +85,13 @@ class CAM_OT_setup_backgrounds(bpy.types.Operator):
                 failed += 1
                 continue
 
-            cam_data.show_background_images = True
-            cam_data.background_images.clear()
-            bg = cam_data.background_images.new()
-            bg.image = img
-            bg.alpha = s.opacity_value
+            if cam_data not in done:    # objects sharing data (Alt+D): once
+                done.add(cam_data)
+                cam_data.show_background_images = True
+                cam_data.background_images.clear()
+                bg = cam_data.background_images.new()
+                bg.image = img
+                bg.alpha = s.opacity_value
 
             existing = next((it for it in s.mc_items if it.camera == cam_obj), None)
             if existing:
@@ -186,21 +185,8 @@ class CAM_OT_remove_every_other(bpy.types.Operator):
 
     def execute(self, context):
         s = context.scene.cam_tools_settings
-        search_text = s.search_filter.lower()
-
-        displayed = []
-        for i, item in enumerate(s.mc_items):
-            if not item.camera:
-                continue
-            if search_text and search_text not in item.camera.name.lower():
-                continue
-            displayed.append((i, item))
-
-        if s.sort_by_name:
-            displayed.sort(key=lambda x: x[1].camera.name)
-
         to_remove = sorted(
-            [mc_idx for pos, (mc_idx, _) in enumerate(displayed) if pos % 2 == 1],
+            [mc_idx for pos, (mc_idx, _) in enumerate(displayed(s)) if pos % 2 == 1],
             reverse=True
         )
 
@@ -378,9 +364,8 @@ class CAM_OT_cycle_camera(bpy.types.Operator):
     def execute(self, context):
         s = context.scene.cam_tools_settings
 
-        items = [it for it in s.mc_items if it.camera]
-        if s.sort_by_name:
-            items.sort(key=lambda it: it.camera.name)
+        # The cameras on screen: search filter + sort, as the grid shows them
+        items = [it for _, it in displayed(s)]
         if not items:
             return {'PASS_THROUGH'}
 
@@ -406,6 +391,12 @@ class CAM_OT_cycle_camera(bpy.types.Operator):
 # Scene display / selection
 # ---------------------------------------------------------------------------
 
+HIDDEN_SIZE = 0.001
+# Original display_size, stored on the camera data while the icons are
+# hidden; the leading underscore keeps it out of the Custom Properties panel
+SIZE_KEY = "_cbm_display_size"
+
+
 class CAM_OT_toggle_camera_display(bpy.types.Operator):
     """Hide / show the frustums of all scene cameras in the viewport"""
     bl_idname = "cam.toggle_camera_display"
@@ -423,25 +414,26 @@ class CAM_OT_toggle_camera_display(bpy.types.Operator):
     def execute(self, context):
         s = context.scene.cam_tools_settings
         cam_objects = [o for o in context.scene.objects if o.type == 'CAMERA']
+        # display_size belongs to the camera data, which objects can share
+        # (Alt+D): one saved size per data block, kept on the block itself —
+        # so renaming a camera while hidden doesn't lose it either
+        datas = {o.data for o in cam_objects}
 
         if not s.cameras_display_hidden:
-            sizes = {}
-            for cam_obj in cam_objects:
-                sizes[cam_obj.name] = cam_obj.data.display_size
-                cam_obj.data.display_size = 0.001
-            s.cameras_display_sizes = json.dumps(sizes)
+            for d in datas:
+                if SIZE_KEY not in d:
+                    d[SIZE_KEY] = d.display_size
+                d.display_size = HIDDEN_SIZE
             s.cameras_display_hidden = True
             notes.report(self, {'INFO'}, f"Icons hidden for {len(cam_objects)} scene cameras")
         else:
-            try:
-                sizes = json.loads(s.cameras_display_sizes)
-            except Exception:
-                sizes = {}
-            for cam_obj in cam_objects:
-                original = sizes.get(cam_obj.name, 1.0)
-                cam_obj.data.display_size = original
+            # Only what was shrunk comes back; a camera added while hidden
+            # keeps its own size
+            for d in datas:
+                if SIZE_KEY in d:
+                    d.display_size = d[SIZE_KEY]
+                    del d[SIZE_KEY]
             s.cameras_display_hidden = False
-            s.cameras_display_sizes = "{}"
             notes.report(self, {'INFO'}, "Camera icons restored")
 
         for area in context.screen.areas:
@@ -474,20 +466,19 @@ class CAM_OT_select_in_outliner(bpy.types.Operator):
             notes.report(self, {'WARNING'}, "No cameras in the list")
             return {'CANCELLED'}
 
-        for obj in context.scene.objects:
+        # The view layer's objects, not the scene's: an object in an excluded
+        # collection raises on select_set / becoming active
+        for obj in context.view_layer.objects:
             obj.select_set(False)
 
-        selected = 0
-        skipped  = 0
-        for cam in cam_objects:
-            if cam.visible_get():
-                cam.select_set(True)
-                selected += 1
-            else:
-                skipped += 1
+        visible = [cam for cam in cam_objects if cam.visible_get()]
+        for cam in visible:
+            cam.select_set(True)
+        selected = len(visible)
+        skipped = len(cam_objects) - selected
 
-        if selected > 0:
-            context.view_layer.objects.active = cam_objects[0]
+        if visible:
+            context.view_layer.objects.active = visible[0]
 
         for area in context.screen.areas:
             if area.type in {'OUTLINER', 'VIEW_3D'}:

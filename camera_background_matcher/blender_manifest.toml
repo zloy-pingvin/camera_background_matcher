@@ -13,7 +13,7 @@ website = "https://github.com/zloy-pingvin/camera_background_matcher"
 
 tags = ["Camera", "3D View", "Pipeline"]
 
-blender_version_min = "5.2.0"
+blender_version_min = "4.2.0"
 
 license = [
   "SPDX:GPL-3.0-or-later",
@@ -23,9 +23,11 @@ copyright = [
 ]
 
 # Shown at install time, 64 characters at most. Import from Folder lists
-# the picked folder and loads the images in it
+# the picked folder and loads the images in it; Ctrl+V in the tab's text
+# fields reads the clipboard
 [permissions]
 files = "Read background images from the folder you pick"
+clipboard = "Paste into the Search and Clip Start fields"
 
 [build]
 paths_exclude_pattern = [
